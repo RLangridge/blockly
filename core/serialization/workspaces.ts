@@ -41,15 +41,16 @@ export function save(workspace: Workspace): {
  * @param workspace The workspace to add the new state to.
  * @param param1 recordUndo: If true, events triggered by this function will be
  *     undo-able by the user. False by default.
+ *     @returns A list of any items that were in the state that couldn't be parsed
  */
 export function load(
   state: {[key: string]: AnyDuringMigration},
   workspace: Workspace,
   {recordUndo = false}: {recordUndo?: boolean} = {},
-) {
+): string[] {
   const serializerMap = registry.getAllItems(registry.Type.SERIALIZER, true);
   if (!serializerMap) {
-    return;
+    return [];
   }
 
   const deserializers = Object.entries(serializerMap).sort(
@@ -74,11 +75,17 @@ export function load(
     (deserializer as ISerializer)?.clear(workspace);
   }
 
+  let missingBlocks = []
+
   // reverse() is destructive, so we have to re-reverse to correct the order.
   for (const [name, deserializer] of deserializers.reverse()) {
     const pluginState = state[name];
     if (pluginState) {
-      (deserializer as ISerializer)?.load(state[name], workspace);
+      try {
+        (deserializer as ISerializer)?.load(state[name], workspace);
+      } catch(e) {
+        missingBlocks.push(name);
+      }
     }
   }
 
@@ -91,4 +98,6 @@ export function load(
 
   eventUtils.setGroup(existingGroup);
   eventUtils.setRecordUndo(prevRecordUndo);
+
+  return missingBlocks
 }
